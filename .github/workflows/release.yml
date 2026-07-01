@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: Apache-2.0
+# Build and publish `quicopt` to PyPI via Trusted Publishing (OIDC) — no API tokens.
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]   # publishing a GitHub release triggers a real upload
+  workflow_dispatch:     # manual trigger (used for the first v0.1.0, already released)
+
+jobs:
+  build:
+    name: Build sdist + wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build distributions
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+      - name: Validate metadata renders on PyPI
+        run: |
+          python -m pip install --upgrade twine
+          twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write    # the OIDC token PyPI Trusted Publishing verifies — no secrets
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
