@@ -6,13 +6,17 @@ emit the versioned, language-neutral bytes the service consumes.
 
 ## Install
 
-The conventional Python workflow is an editable install into a virtual environment:
+```sh
+pip install quicopt              # core (ir + wire) — standard library only
+pip install "quicopt[pyomo]"     # + the Pyomo front-end
+pip install "quicopt[mathopt]"   # + the OR-Tools MathOpt front-end
+```
+
+From source (contributors), an editable install into a virtual environment:
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
-pip install -e .            # core (ir + wire) — standard library only
-pip install -e '.[pyomo]'   # + the Pyomo front-end
-pip install -e '.[mathopt]' # + the OR-Tools MathOpt front-end
+pip install -e '.[pyomo,mathopt]'
 ```
 
 ## Use

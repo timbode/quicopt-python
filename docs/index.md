@@ -12,10 +12,9 @@ front-end is an optional extra.
 ## Install
 
 ```sh
-python3 -m venv .venv && . .venv/bin/activate
-pip install -e .            # core (ir + wire) — standard library only
-pip install -e '.[pyomo]'   # + the Pyomo front-end
-pip install -e '.[mathopt]' # + the OR-Tools MathOpt front-end
+pip install quicopt              # core (ir + wire) — standard library only
+pip install "quicopt[pyomo]"     # + the Pyomo front-end
+pip install "quicopt[mathopt]"   # + the OR-Tools MathOpt front-end
 ```
 
 ## Quickstart
