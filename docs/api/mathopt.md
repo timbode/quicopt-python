@@ -1,0 +1,3 @@
+# `quicopt.mathopt`
+
+::: quicopt.mathopt

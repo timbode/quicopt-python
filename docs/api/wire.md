@@ -1,0 +1,3 @@
+# `quicopt.wire`
+
+::: quicopt.wire

@@ -1,0 +1,77 @@
+site_name: quicopt
+site_description: Python client for the Quicopt optimization service — author models, emit the wire IR.
+site_url: https://timbode.github.io/quicopt-python/
+repo_url: https://github.com/timbode/quicopt-python
+repo_name: timbode/quicopt-python
+copyright: Copyright &copy; 2026 Tim Bode, PGI-12, Forschungszentrum Jülich
+
+theme:
+  name: material
+  font: false                      # system font stack — no Google Fonts CDN call
+  logo: assets/quicopt-icon-color.svg      # header logo; extra.css swaps to white in dark mode
+  favicon: assets/favicon.svg
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.instant
+    - content.code.copy
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom        # exact brand hex lives in docs/stylesheets/extra.css
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            docstring_section_style: table
+            show_root_heading: true
+            show_root_full_path: false
+            show_source: true
+            members_order: source
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            merge_init_into_class: true
+            # Render the public surface only. The private helpers are documented in
+            # the source for maintainers; to surface them here, drop this filter.
+            filters: ["!^_"]
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+
+nav:
+  - Home: index.md
+  - API reference:
+      - ir — the Program IR: api/ir.md
+      - wire — the encoder: api/wire.md
+      - pyomo — Pyomo front-end: api/pyomo.md
+      - mathopt — MathOpt front-end: api/mathopt.md
+      - client — HTTP transport: api/client.md

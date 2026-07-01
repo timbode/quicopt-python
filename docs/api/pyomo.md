@@ -1,0 +1,3 @@
+# `quicopt.pyomo`
+
+::: quicopt.pyomo

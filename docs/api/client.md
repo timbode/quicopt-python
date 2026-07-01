@@ -1,0 +1,3 @@
+# `quicopt.client`
+
+::: quicopt.client

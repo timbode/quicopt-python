@@ -1,0 +1,80 @@
+/* ── Self-hosted Fira (SIL OFL 1.1; see ../fonts/LICENSE-Fira-OFL.txt) ─────────
+   No Google Fonts CDN call: the woff2 files ship in the repo under docs/fonts/. */
+
+@font-face {
+  font-family: "Fira Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/fira-sans-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Fira Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../fonts/fira-sans-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Fira Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/fira-sans-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Fira Code";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/fira-code-400.woff2") format("woff2");
+}
+
+:root {
+  --md-text-font: "Fira Sans";     /* body + headings */
+  --md-code-font: "Fira Code";     /* code spans and blocks */
+}
+
+/* ── Quicopt brand palette: blue #2d5faa + logo grey #333333 ──────────────────
+   `primary`/`accent` are set to `custom` in mkdocs.yml so these variables win. */
+
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color:        #2d5faa;   /* header, nav, active items */
+  --md-primary-fg-color--light: #5a91cb;
+  --md-primary-fg-color--dark:  #24487f;
+}
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: #24487f;           /* link hover / active accents */
+}
+
+[data-md-color-scheme="default"] {
+  --md-typeset-color:   #333333;           /* body text in the logo grey */
+  --md-typeset-a-color: #2d5faa;           /* links in the brand blue */
+}
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #2d5faa;          /* dark-mode header bar in the brand blue */
+  --md-typeset-a-color:  #8ab3dd;          /* lighter blue for contrast on dark */
+  --md-accent-fg-color:  #5a91cb;
+}
+
+/* ── Per-scheme header + logo ─────────────────────────────────────────────────
+   Light: white header bar with dark controls, and the colour logo.
+   Dark:  brand-blue header bar (the slate primary above), and the white logo. */
+
+[data-md-color-scheme="default"] .md-header {
+  background-color: #ffffff;
+  color: #333333;                          /* title + icons follow via currentColor */
+  border-bottom: 1px solid #e6e6e6;        /* separate the white bar from the page */
+}
+[data-md-color-scheme="default"] .md-search__input {
+  background-color: rgba(0, 0, 0, 0.05);   /* visible search field on the white bar */
+  color: #333333;
+}
+[data-md-color-scheme="default"] .md-search__input::placeholder {
+  color: rgba(0, 0, 0, 0.5);
+}
+
+/* Swap the header logo image itself (colour ⇄ white) — no second <img> needed. */
+[data-md-color-scheme="slate"] .md-logo img {
+  content: url("../assets/quicopt-icon-white.svg");
+}

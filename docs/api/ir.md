@@ -1,0 +1,3 @@
+# `quicopt.ir`
+
+::: quicopt.ir
