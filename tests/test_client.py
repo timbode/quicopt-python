@@ -129,13 +129,13 @@ def test_solve_accepts_raw_bytes():
 def test_solve_rejects_unknown_model():
     # A front-end model imports inside solve(); anything that is neither a known
     # front-end model, a Program, nor wire bytes is a clear TypeError (not a wire
-    # request). The positive Pyomo/MathOpt dispatch is covered where those extras
-    # are installed — it stays out of this stdlib-only suite.
+    # request). The positive Pyomo/MathOpt/PuLP dispatch is covered where those
+    # extras are installed — it stays out of this stdlib-only suite.
     with _serve() as (client, srv):
         try:
             client.solve(object())
         except TypeError as e:
-            assert "Pyomo" in str(e) and "MathOpt" in str(e)
+            assert "Pyomo" in str(e) and "MathOpt" in str(e) and "PuLP" in str(e)
         else:
             assert False, "expected TypeError for an unknown model type"
         assert srv.last_body is None                      # nothing was sent

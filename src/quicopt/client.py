@@ -101,7 +101,7 @@ class QuicoptError(Exception):
         super().__init__(self.body.get("error") or f"HTTP {status_code}")
 
 
-_Model = Any    # a front-end model (Pyomo, MathOpt), a Program, or pre-encoded wire bytes
+_Model = Any    # a front-end model (Pyomo, MathOpt, PuLP), a Program, or pre-encoded wire bytes
 
 
 def _import_frontend(model: Any) -> Program:
@@ -116,8 +116,11 @@ def _import_frontend(model: Any) -> Program:
     if mod.startswith("pyomo"):
         from .pyomo import import_model
         return import_model(model)
-    raise TypeError(f"cannot solve a {type(model).__name__}: pass a Pyomo or OR-Tools "
-                    "MathOpt model, a Program, or wire bytes")
+    if mod.startswith("pulp"):
+        from .pulp import import_model
+        return import_model(model)
+    raise TypeError(f"cannot solve a {type(model).__name__}: pass a Pyomo, OR-Tools "
+                    "MathOpt, or PuLP model, a Program, or wire bytes")
 
 
 def _to_wire(model: _Model) -> bytes:
