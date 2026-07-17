@@ -15,6 +15,7 @@ front-end is an optional extra.
 pip install quicopt              # core (ir + wire) — standard library only
 pip install "quicopt[pyomo]"     # + the Pyomo front-end
 pip install "quicopt[mathopt]"   # + the OR-Tools MathOpt front-end
+pip install "quicopt[pulp]"      # + the PuLP front-end
 ```
 
 ## Quickstart
@@ -56,4 +57,5 @@ See the **API reference** for each layer:
 - [`wire`](api/wire.md) — `Program` → versioned wire bytes.
 - [`pyomo`](api/pyomo.md) — a Pyomo model → `Program`.
 - [`mathopt`](api/mathopt.md) — an OR-Tools MathOpt model → `Program`.
+- [`pulp`](api/pulp.md) — a PuLP model → `Program`.
 - [`client`](api/client.md) — POST the wire bytes and read the result back.
