@@ -1,8 +1,8 @@
 # quicopt
 
 The Python client for the Quicopt optimization service. Author a model in a Python
-modeling front-end (Pyomo, or OR-Tools MathOpt), convert it to Quicopt's wire IR, and
-emit the versioned, language-neutral bytes the service consumes.
+modeling front-end (Pyomo, OR-Tools MathOpt, or PuLP), convert it to Quicopt's wire
+IR, and emit the versioned, language-neutral bytes the service consumes.
 
 ## Install
 
@@ -30,14 +30,14 @@ m = pyo.ConcreteModel()
 m.x = pyo.Var(bounds=(0.1, 10))
 m.obj = pyo.Objective(expr=m.x**2 + 1.0 / m.x, sense=pyo.minimize)
 
-client = Client("https://quicopt.example")   # your service endpoint
+client = Client("https://try.quicoptapi.pgi.fz-juelich.de")   # the free-tier Quicopt server
 result = client.solve(m)                      # solve the model — the import to the
                                               # wire IR happens inside
 print(result.status, result.objective, result.solution)
 print(result.display)                         # the service's ready-to-print summary
 ```
 
-`solve` takes the model directly (Pyomo, or an OR-Tools MathOpt model) and imports it
+`solve` takes the model directly (Pyomo, OR-Tools MathOpt, or PuLP) and imports it
 to the wire IR internally. The first keyless call mints an API key (`client.api_key`);
 reuse it on later calls (`Client(url, api_key=…)`). For a long solve, `client.submit(m)`
 returns a job handle to poll — `job.result()`.

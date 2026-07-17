@@ -1,10 +1,10 @@
 # quicopt
 
 The Python client for the Quicopt optimization service. Author a model in a Python
-modeling front-end ([Pyomo](https://www.pyomo.org/), or
-[OR-Tools MathOpt](https://developers.google.com/optimization/math_opt)), convert it
-to Quicopt's wire IR, and emit the versioned, language-neutral bytes the service
-consumes.
+modeling front-end ([Pyomo](https://www.pyomo.org/),
+[OR-Tools MathOpt](https://developers.google.com/optimization/math_opt), or
+[PuLP](https://coin-or.github.io/pulp/)), convert it to Quicopt's wire IR, and emit
+the versioned, language-neutral bytes the service consumes.
 
 The core (`ir` + `wire`) depends on nothing outside the standard library; each
 front-end is an optional extra.
@@ -28,14 +28,14 @@ m = pyo.ConcreteModel()
 m.x = pyo.Var(bounds=(0.1, 10))
 m.obj = pyo.Objective(expr=m.x**2 + 1.0 / m.x, sense=pyo.minimize)
 
-client = Client("https://quicopt.example")   # your service endpoint
+client = Client("https://try.quicoptapi.pgi.fz-juelich.de")   # the free-tier Quicopt server
 result = client.solve(m)                      # the import to the wire IR happens inside
 print(result.status, result.objective, result.solution)
 print(result.display)                         # the service's ready-to-print summary
 ```
 
-[`solve`][quicopt.client.Client.solve] takes the model directly (Pyomo, or an
-OR-Tools MathOpt model) and imports it to the wire IR internally. For a long solve,
+[`solve`][quicopt.client.Client.solve] takes the model directly (Pyomo, OR-Tools
+MathOpt, or PuLP) and imports it to the wire IR internally. For a long solve,
 [`submit`][quicopt.client.Client.submit] returns a [`Job`][quicopt.client.Job] handle
 to poll.
 
