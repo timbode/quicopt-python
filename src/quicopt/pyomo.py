@@ -18,7 +18,8 @@ from math import inf
 
 import pyomo.environ as pyo
 
-from .ir import (Const, Var, Apply, VarDecl, Constraint, Zero, Nonneg, Program,
+from ._terms import _emit, _sum
+from .ir import (Const, Var, Apply, VarDecl, Program,
                  CONTINUOUS, INTEGER, BINARY)
 
 # The ops the service knows. A head outside this set raises — resolve it in the
@@ -66,22 +67,6 @@ def _expr(node, var):
     return Const(float(pyo.value(node)))        # constant / parameter leaf → baked to data
 
 
-def _sum(terms):
-    """Fold terms into an n-ary IR sum, dropping additive-zero constants.
-
-    Args:
-        terms: The IR expression terms being added.
-
-    Returns:
-        Expression: ``Const(0.0)`` if every term is a zero constant, the sole term
-        if exactly one survives, else an ``Apply("+", …)`` over the survivors.
-    """
-    nz = [t for t in terms if not (isinstance(t, Const) and t.value == 0.0)]
-    if not nz:
-        return Const(0.0)
-    return nz[0] if len(nz) == 1 else Apply("+", nz)
-
-
 def _apply(op, args):
     """Build an ``Apply`` node, guarding the head against the operator catalog.
 
@@ -100,62 +85,6 @@ def _apply(op, args):
         raise ValueError(f"operator {op!r} is not in the Quicopt operator catalog — "
                          "it must be added to the service before importing")
     return Apply(op, args)
-
-
-# ── constraint body + bounds → IR Constraint rows (Zero / Nonneg) ───────────
-#   f = c ⇒ f − c = 0 ;  f ≥ l ⇒ f − l ≥ 0 ;  f ≤ u ⇒ u − f ≥ 0 ;  ranged ⇒ both.
-
-def _minus(f, c):
-    """Return ``f − c`` as an IR expression, dropping the additive zero.
-
-    Args:
-        f: The IR expression on the left.
-        c: The numeric constant subtracted (a bound); ``0.0`` leaves ``f`` unchanged.
-
-    Returns:
-        Expression: ``f`` if ``c == 0.0`` else ``Apply("-", [f, Const(c)])``.
-    """
-    return f if c == 0.0 else Apply("-", [f, Const(float(c))])
-
-
-def _geq(u, f):
-    """Return ``u − f`` — the body of ``f ≤ u`` written as ``u − f ≥ 0``.
-
-    Args:
-        u: The numeric upper bound.
-        f: The IR constraint-body expression.
-
-    Returns:
-        Expression: ``Apply("-", [Const(u), f])``.
-    """
-    return Apply("-", [Const(float(u)), f])
-
-
-def _emit(cons, f, con):
-    """Append the ``Zero``/``Nonneg`` rows for one Pyomo constraint to ``cons``.
-
-    Encodes ``f = c`` as ``f − c = 0`` (``Zero``), ``f ≥ l`` as ``f − l ≥ 0`` and
-    ``f ≤ u`` as ``u − f ≥ 0`` (``Nonneg``); a ranged constraint emits both
-    inequality rows.
-
-    Args:
-        cons: The list of IR :class:`~quicopt.ir.Constraint` rows appended to
-            (mutated in place).
-        f: The IR expression of the constraint body.
-        con: The Pyomo constraint data supplying ``lower``/``upper``/``equality``.
-
-    Returns:
-        None. Rows are appended to ``cons``.
-    """
-    lb = pyo.value(con.lower) if con.has_lb() else None
-    ub = pyo.value(con.upper) if con.has_ub() else None
-    if con.equality:                            # lb == ub == rhs
-        cons.append(Constraint(_minus(f, lb), Zero(), []))
-    else:
-        if lb is not None:
-            cons.append(Constraint(_minus(f, lb), Nonneg(), []))
-        if ub is not None:
-            cons.append(Constraint(_geq(ub, f), Nonneg(), []))
 
 
 def import_model(m):
@@ -188,6 +117,8 @@ def import_model(m):
 
     cons = []
     for c in m.component_data_objects(pyo.Constraint, active=True):
-        _emit(cons, _expr(c.body, var), c)
+        lb = pyo.value(c.lower) if c.has_lb() else -inf   # an absent side ⇒ free, emits no row
+        ub = pyo.value(c.upper) if c.has_ub() else inf
+        _emit(cons, _expr(c.body, var), lb, ub)
 
     return Program(vars=vars, objective=objective, sense=sense, constraints=cons)
