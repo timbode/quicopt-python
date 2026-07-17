@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quicopt"
-version = "0.1.0"
+version = "0.2.0"
 description = "Python client for the Quicopt service — author models, emit the Quicopt wire IR."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -24,6 +24,7 @@ dependencies = []                 # the core (ir + wire) is stdlib-only, by desi
 [project.optional-dependencies]
 pyomo   = ["pyomo>=6"]            # the Pyomo front-end importer lives in quicopt.pyomo
 mathopt = ["ortools>=9"]          # the OR-Tools MathOpt front-end lives in quicopt.mathopt
+pulp    = ["pulp>=2"]             # the PuLP front-end importer lives in quicopt.pulp
 test    = ["pytest"]
 docs    = [                       # the API-reference site (mkdocs build / mkdocs serve)
     "mkdocs-material>=9",

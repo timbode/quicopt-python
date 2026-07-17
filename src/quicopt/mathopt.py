@@ -20,9 +20,8 @@ Requires the optional ``[mathopt]`` extra (``pip install -e '.[mathopt]'``).
 """
 from __future__ import annotations
 
-from math import isfinite
-
-from .ir import (Apply, Const, Constraint, Nonneg, Program, Var, VarDecl, Zero,
+from ._terms import _emit, _scaled, _sum
+from .ir import (Apply, Const, Program, Var, VarDecl,
                  BINARY, CONTINUOUS, INTEGER)
 
 # Constraint kinds a ModelProto can carry that this subset does not serve. Their
@@ -30,89 +29,6 @@ from .ir import (Apply, Const, Constraint, Nonneg, Program, Var, VarDecl, Zero,
 _UNSUPPORTED = ("quadratic_constraints", "second_order_cone_constraints",
                 "sos1_constraints", "sos2_constraints", "indicator_constraints",
                 "auxiliary_objectives")
-
-
-# ── term builders (mirror quicopt.pyomo's canonical forms) ──────────────────
-
-def _scaled(coef, e):
-    """Return ``coef · e`` as an IR expression, dropping a unit coefficient.
-
-    Args:
-        coef: The scalar multiplier; ``1.0`` leaves ``e`` unchanged.
-        e: The IR expression being scaled.
-
-    Returns:
-        Expression: ``e`` if ``coef == 1.0`` else ``Apply("*", [Const(coef), e])``.
-    """
-    return e if coef == 1.0 else Apply("*", [Const(float(coef)), e])
-
-
-def _sum(terms):
-    """Fold terms into an n-ary IR sum, dropping additive-zero constants.
-
-    Args:
-        terms: The IR expression terms being added.
-
-    Returns:
-        Expression: ``Const(0.0)`` if every term is a zero constant, the sole term
-        if one survives, else an ``Apply("+", …)`` over the survivors.
-    """
-    nz = [t for t in terms if not (isinstance(t, Const) and t.value == 0.0)]
-    if not nz:
-        return Const(0.0)
-    return nz[0] if len(nz) == 1 else Apply("+", nz)
-
-
-def _minus(f, c):
-    """Return ``f − c`` as an IR expression, dropping the additive zero.
-
-    Args:
-        f: The IR expression on the left.
-        c: The numeric constant subtracted; ``0.0`` leaves ``f`` unchanged.
-
-    Returns:
-        Expression: ``f`` if ``c == 0.0`` else ``Apply("-", [f, Const(c)])``.
-    """
-    return f if c == 0.0 else Apply("-", [f, Const(float(c))])
-
-
-def _geq(u, f):
-    """Return ``u − f`` — the body of ``f ≤ u`` written as ``u − f ≥ 0``.
-
-    Args:
-        u: The numeric upper bound.
-        f: The IR constraint-body expression.
-
-    Returns:
-        Expression: ``Apply("-", [Const(u), f])``.
-    """
-    return Apply("-", [Const(float(u)), f])
-
-
-def _emit(cons, f, lb, ub):
-    """Append the ``Zero``/``Nonneg`` rows for one ``lb ≤ f ≤ ub`` range to ``cons``.
-
-    A finite ``lb == ub`` is an equality (``f − lb = 0``, ``Zero``); otherwise each
-    finite side emits a ``Nonneg`` row (``f − lb ≥ 0`` and/or ``ub − f ≥ 0``). An
-    infinite side is dropped as a free direction.
-
-    Args:
-        cons: The list of IR :class:`~quicopt.ir.Constraint` rows appended to
-            (mutated in place).
-        f: The IR expression of the row body ``Σ A[r,j] xⱼ``.
-        lb: The row's lower bound (``-inf`` for none).
-        ub: The row's upper bound (``+inf`` for none).
-
-    Returns:
-        None. Rows are appended to ``cons``.
-    """
-    if isfinite(lb) and lb == ub:              # equality: f − c = 0
-        cons.append(Constraint(_minus(f, lb), Zero(), []))
-        return
-    if isfinite(lb):                           # f − lb ≥ 0
-        cons.append(Constraint(_minus(f, lb), Nonneg(), []))
-    if isfinite(ub):                           # ub − f ≥ 0
-        cons.append(Constraint(_geq(ub, f), Nonneg(), []))
 
 
 def import_model(model):

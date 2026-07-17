@@ -1,10 +1,10 @@
 # quicopt
 
 The Python client for the Quicopt optimization service. Author a model in a Python
-modeling front-end ([Pyomo](https://www.pyomo.org/), or
-[OR-Tools MathOpt](https://developers.google.com/optimization/math_opt)), convert it
-to Quicopt's wire IR, and emit the versioned, language-neutral bytes the service
-consumes.
+modeling front-end ([Pyomo](https://www.pyomo.org/),
+[OR-Tools MathOpt](https://developers.google.com/optimization/math_opt), or
+[PuLP](https://coin-or.github.io/pulp/)), convert it to Quicopt's wire IR, and emit
+the versioned, language-neutral bytes the service consumes.
 
 The core (`ir` + `wire`) depends on nothing outside the standard library; each
 front-end is an optional extra.
@@ -15,6 +15,7 @@ front-end is an optional extra.
 pip install quicopt              # core (ir + wire) — standard library only
 pip install "quicopt[pyomo]"     # + the Pyomo front-end
 pip install "quicopt[mathopt]"   # + the OR-Tools MathOpt front-end
+pip install "quicopt[pulp]"      # + the PuLP front-end
 ```
 
 ## Quickstart
@@ -27,14 +28,14 @@ m = pyo.ConcreteModel()
 m.x = pyo.Var(bounds=(0.1, 10))
 m.obj = pyo.Objective(expr=m.x**2 + 1.0 / m.x, sense=pyo.minimize)
 
-client = Client("https://quicopt.example")   # your service endpoint
+client = Client("https://try.quicoptapi.pgi.fz-juelich.de")   # the free-tier Quicopt server
 result = client.solve(m)                      # the import to the wire IR happens inside
 print(result.status, result.objective, result.solution)
 print(result.display)                         # the service's ready-to-print summary
 ```
 
-[`solve`][quicopt.client.Client.solve] takes the model directly (Pyomo, or an
-OR-Tools MathOpt model) and imports it to the wire IR internally. For a long solve,
+[`solve`][quicopt.client.Client.solve] takes the model directly (Pyomo, OR-Tools
+MathOpt, or PuLP) and imports it to the wire IR internally. For a long solve,
 [`submit`][quicopt.client.Client.submit] returns a [`Job`][quicopt.client.Job] handle
 to poll.
 
@@ -56,4 +57,5 @@ See the **API reference** for each layer:
 - [`wire`](api/wire.md) — `Program` → versioned wire bytes.
 - [`pyomo`](api/pyomo.md) — a Pyomo model → `Program`.
 - [`mathopt`](api/mathopt.md) — an OR-Tools MathOpt model → `Program`.
+- [`pulp`](api/pulp.md) — a PuLP model → `Program`.
 - [`client`](api/client.md) — POST the wire bytes and read the result back.

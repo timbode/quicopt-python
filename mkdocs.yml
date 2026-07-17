@@ -74,4 +74,5 @@ nav:
       - wire — the encoder: api/wire.md
       - pyomo — Pyomo front-end: api/pyomo.md
       - mathopt — MathOpt front-end: api/mathopt.md
+      - pulp — PuLP front-end: api/pulp.md
       - client — HTTP transport: api/client.md
