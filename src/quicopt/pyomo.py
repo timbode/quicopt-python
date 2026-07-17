@@ -94,7 +94,9 @@ def import_model(m):
     carrying its bounds and domain (``Binary``→``BINARY``, integer domains→
     ``INTEGER``, else ``CONTINUOUS``); the active objective and every constraint
     become IR expressions. Requires exactly one active objective; an absent Pyomo
-    variable bound is taken as ±Inf (a free direction).
+    variable bound is taken as ±Inf (a free direction). A variable that is fixed but
+    carries no value **raises**: its pin has no value to pin *to*, and the ±Inf
+    reading of an absent bound would turn it into a free variable instead.
     """
     vis = list(m.component_data_objects(pyo.Var))
     name = {id(v): f"x{i + 1}" for i, v in enumerate(vis)}
@@ -103,6 +105,8 @@ def import_model(m):
     vars = []
     for v in vis:
         domain = BINARY if v.is_binary() else INTEGER if v.is_integer() else CONTINUOUS
+        if v.fixed and v.value is None:            # else the pin below is (None, None) ⇒ ±Inf ⇒ silently free
+            raise ValueError(f"variable '{v.name}' is fixed but has no value")
         lb, ub = (v.value, v.value) if v.fixed else (v.lb, v.ub)   # a fixed var ⇒ a [val, val] pin
         lb = -inf if lb is None else lb                            # an absent Pyomo bound ⇒ ±Inf (free)
         ub =  inf if ub is None else ub

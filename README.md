@@ -89,7 +89,8 @@ extras, skips without them).
 - **ir + wire** — stable; the encoder is byte-exact against what the service decodes.
 - **pyomo importer** — affine / quadratic / nonlinear (`+ - * / ^ sin cos exp log
   sqrt abs`), variable bounds (incl. unbounded) + integrality, `==` / `<=` / `>=` /
-  ranged constraints, `min` / `max`.
+  ranged constraints, `min` / `max`. A fixed variable pins to `[val, val]`; one fixed
+  *without* a value raises rather than importing as free.
 - **mathopt importer** — OR-Tools MathOpt `ModelProto`: linear / quadratic
   objective, linear constraints (incl. ranged and one-sided), variable bounds
   (incl. unbounded) + integrality, `min` / `max`.
