@@ -1,5 +1,11 @@
 # quicopt
 
+[![PyPI](https://img.shields.io/pypi/v/quicopt.svg)](https://pypi.org/project/quicopt/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://pypi.org/project/quicopt/)
+[![Docs](https://img.shields.io/badge/docs-latest-blue.svg)](https://timbode.github.io/quicopt-python/)
+[![Downloads](https://img.shields.io/pypi/dm/quicopt.svg)](https://pypistats.org/packages/quicopt)
+[![License: Apache 2.0](https://img.shields.io/pypi/l/quicopt.svg)](https://github.com/timbode/quicopt-python/blob/main/LICENSE)
+
 The Python client for the Quicopt optimization service. Author a model in a Python
 modeling front-end (Pyomo, OR-Tools MathOpt, or PuLP), convert it to Quicopt's wire
 IR, and emit the versioned, language-neutral bytes the service consumes.
@@ -110,4 +116,4 @@ extras, skips without them).
 
 ## License
 
-Apache License 2.0 — see [`LICENSE`](LICENSE). (c) 2026 Tim Bode, PGI-12, Forschungszentrum Jülich.
+Apache License 2.0 — see [`LICENSE`](https://github.com/timbode/quicopt-python/blob/main/LICENSE). (c) 2026 Tim Bode, PGI-12, Forschungszentrum Jülich.
