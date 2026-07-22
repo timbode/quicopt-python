@@ -33,9 +33,14 @@ from urllib.parse import urlencode
 from .ir import Program
 from .wire import encode
 
-__all__ = ["Client", "Job", "Result", "QuicoptError"]
+__all__ = ["Client", "Job", "Result", "QuicoptError", "DEFAULT_BASE_URL"]
 
 _OCTET = "application/octet-stream"
+
+DEFAULT_BASE_URL = "https://try.quicoptapi.pgi.fz-juelich.de"
+"""The public Quicopt free-tier endpoint a :class:`Client` targets when no
+``base_url`` is given. Mirrors the Julia client's ``DEFAULT_BASE_URL`` so both
+clients reach the same server out of the box."""
 
 
 @dataclass(frozen=True)
@@ -147,15 +152,19 @@ def _query(config: Optional[Dict[str, Any]]) -> str:
 
 
 class Client:
-    """A connection to a Quicopt service at ``base_url``. Holds the API key: pass
+    """A connection to a Quicopt service at ``base_url`` — the public free tier
+    (:data:`DEFAULT_BASE_URL`) unless another URL is given. Holds the API key: pass
     a known one, or let the first keyless call mint one (then read it back from
     ``client.api_key`` to persist)."""
 
-    def __init__(self, base_url: str, api_key: Optional[str] = None, *, timeout: float = 60.0):
+    def __init__(self, base_url: str = DEFAULT_BASE_URL, api_key: Optional[str] = None,
+                 *, timeout: float = 60.0):
         """Bind a client to a service endpoint.
 
         Args:
-            base_url: The service base URL; a trailing slash is stripped.
+            base_url: The service base URL; a trailing slash is stripped. Defaults
+                to :data:`DEFAULT_BASE_URL`, the public free-tier endpoint; pass
+                another URL to target a different server.
             api_key: A known API key, or ``None`` to let the first keyless call mint
                 one (afterwards readable back from ``self.api_key``).
             timeout: Per-request socket timeout, in seconds.

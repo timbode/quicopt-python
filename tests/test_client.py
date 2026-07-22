@@ -15,8 +15,8 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from quicopt import (Apply, Client, Const, Constraint, CONTINUOUS, Job, Nonneg,
-                     Program, QuicoptError, Var, VarDecl, encode)
+from quicopt import (Apply, Client, Const, Constraint, CONTINUOUS, DEFAULT_BASE_URL,
+                     Job, Nonneg, Program, QuicoptError, Var, VarDecl, encode)
 
 _KEY = "k" * 64
 _JOB = "job-1"
@@ -110,6 +110,12 @@ def test_solve_roundtrip_and_key_mint():
         assert client.api_key == _KEY                    # minted key captured off the header
         client.solve(prog)
         assert srv.last_auth == "Bearer " + _KEY         # replayed as bearer on the next call
+
+
+def test_default_base_url():
+    # Omitting base_url targets the public free tier; an explicit URL still wins.
+    assert Client().base_url == DEFAULT_BASE_URL == "https://try.quicoptapi.pgi.fz-juelich.de"
+    assert Client("http://127.0.0.1:9").base_url == "http://127.0.0.1:9"
 
 
 def test_solve_gzip():

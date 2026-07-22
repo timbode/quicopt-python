@@ -28,7 +28,7 @@ m = pyo.ConcreteModel()
 m.x = pyo.Var(bounds=(0.1, 10))
 m.obj = pyo.Objective(expr=m.x**2 + 1.0 / m.x, sense=pyo.minimize)
 
-client = Client("https://try.quicoptapi.pgi.fz-juelich.de")   # the free-tier Quicopt server
+client = Client()                             # defaults to the free-tier Quicopt server
 result = client.solve(m)                      # the import to the wire IR happens inside
 print(result.status, result.objective, result.solution)
 print(result.display)                         # the service's ready-to-print summary

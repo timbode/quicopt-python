@@ -30,7 +30,7 @@ m = pyo.ConcreteModel()
 m.x = pyo.Var(bounds=(0.1, 10))
 m.obj = pyo.Objective(expr=m.x**2 + 1.0 / m.x, sense=pyo.minimize)
 
-client = Client("https://try.quicoptapi.pgi.fz-juelich.de")   # the free-tier Quicopt server
+client = Client()                             # defaults to the free-tier Quicopt server
 result = client.solve(m)                      # solve the model — the import to the
                                               # wire IR happens inside
 print(result.status, result.objective, result.solution)
@@ -39,8 +39,9 @@ print(result.display)                         # the service's ready-to-print sum
 
 `solve` takes the model directly (Pyomo, OR-Tools MathOpt, or PuLP) and imports it
 to the wire IR internally. The first keyless call mints an API key (`client.api_key`);
-reuse it on later calls (`Client(url, api_key=…)`). For a long solve, `client.submit(m)`
-returns a job handle to poll — `job.result()`.
+reuse it on later calls (`Client(api_key=…)`). Point `Client(base_url=…)` at another
+server to override the default. For a long solve, `client.submit(m)` returns a job
+handle to poll — `job.result()`.
 
 If you need the wire bytes yourself (to inspect or send by another route), the
 front-end importers and encoder are still public:
