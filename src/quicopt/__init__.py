@@ -19,7 +19,7 @@ from .ir import (Const, Param, Var, Apply, Reduce, SetRef,
                  VarDecl, IndexSet, Constraint, Program,
                  Domain, CONTINUOUS, INTEGER, BINARY)
 from .wire import encode, encode_params, SCHEMA_VERSION
-from .client import Client, Job, Result, QuicoptError
+from .client import Client, Job, Result, QuicoptError, DEFAULT_BASE_URL
 
 __all__ = [
     "Const", "Param", "Var", "Apply", "Reduce", "SetRef",
@@ -27,5 +27,5 @@ __all__ = [
     "VarDecl", "IndexSet", "Constraint", "Program",
     "Domain", "CONTINUOUS", "INTEGER", "BINARY",
     "encode", "encode_params", "SCHEMA_VERSION",
-    "Client", "Job", "Result", "QuicoptError",
+    "Client", "Job", "Result", "QuicoptError", "DEFAULT_BASE_URL",
 ]

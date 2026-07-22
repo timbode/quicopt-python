@@ -15,8 +15,8 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from quicopt import (Apply, Client, Const, Constraint, CONTINUOUS, Job, Nonneg,
-                     Program, QuicoptError, Var, VarDecl, encode)
+from quicopt import (Apply, Client, Const, Constraint, CONTINUOUS, DEFAULT_BASE_URL,
+                     Job, Nonneg, Program, QuicoptError, Var, VarDecl, encode)
 
 _KEY = "k" * 64
 _JOB = "job-1"
@@ -52,6 +52,7 @@ class _Stub(BaseHTTPRequestHandler):
         srv.last_body = self._read()
         srv.last_auth = self.headers.get("Authorization")
         srv.last_encoding = self.headers.get("Content-Encoding")
+        srv.last_path = self.path
         minted = {} if self.headers.get("Authorization") else {"X-Quicopt-Api-Key": _KEY}
         if srv.mode == "error":
             self._json(422, _ERROR, minted)
@@ -80,7 +81,7 @@ class _Stub(BaseHTTPRequestHandler):
 def _serve(mode="ok", not_done_first=False):
     srv = HTTPServer(("127.0.0.1", 0), _Stub)
     srv.mode, srv.not_done_first, srv.gets = mode, not_done_first, 0
-    srv.last_body = srv.last_auth = srv.last_encoding = None
+    srv.last_body = srv.last_auth = srv.last_encoding = srv.last_path = None
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
     try:
@@ -110,6 +111,41 @@ def test_solve_roundtrip_and_key_mint():
         assert client.api_key == _KEY                    # minted key captured off the header
         client.solve(prog)
         assert srv.last_auth == "Bearer " + _KEY         # replayed as bearer on the next call
+
+
+def test_metadata_source_and_project():
+    from quicopt.client import _source_language, _meta_config
+
+    def fake(mod, **attrs):
+        cls = type("M", (), attrs)
+        cls.__module__ = mod
+        return cls()
+
+    # source auto-detection by module / duck-type; hand-built inputs have none
+    assert _source_language(fake("pyomo.environ")) == "pyomo"
+    assert _source_language(fake("pulp.pulp")) == "pulp"
+    assert _source_language(fake("ortools.math_opt.python.model")) == "mathopt"
+    assert _source_language(fake("whatever", export_model=lambda self: None)) == "mathopt"
+    assert _source_language(_program()) is None
+    assert _source_language(b"\x00") is None
+
+    # _meta_config merges auto source (unless overridden) + project
+    assert _meta_config(_program(), "proj-1", None) == {"project_id": "proj-1"}
+    assert _meta_config(fake("pyomo.environ"), None, None) == {"source_language": "pyomo"}
+    assert _meta_config(fake("pyomo.environ"), None, {"source_language": "x"})["source_language"] == "x"
+
+    # end-to-end: project rides the request query string (%-escaped), not the body
+    prog = _program()
+    with _serve() as (client, srv):
+        client.solve(prog, project="proj A/1")
+        assert "project_id=proj%20A%2F1" in srv.last_path
+        assert srv.last_body == encode(prog)
+
+
+def test_default_base_url():
+    # Omitting base_url targets the public free tier; an explicit URL still wins.
+    assert Client().base_url == DEFAULT_BASE_URL == "https://try.quicoptapi.pgi.fz-juelich.de"
+    assert Client("http://127.0.0.1:9").base_url == "http://127.0.0.1:9"
 
 
 def test_solve_gzip():
