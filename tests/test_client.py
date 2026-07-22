@@ -12,8 +12,11 @@ library.
 import contextlib
 import gzip
 import json
+import os
+import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 from quicopt import (Apply, Client, Const, Constraint, CONTINUOUS, DEFAULT_BASE_URL,
                      Job, Nonneg, Program, QuicoptError, Var, VarDecl, encode)
@@ -53,7 +56,16 @@ class _Stub(BaseHTTPRequestHandler):
         srv.last_auth = self.headers.get("Authorization")
         srv.last_encoding = self.headers.get("Content-Encoding")
         srv.last_path = self.path
-        minted = {} if self.headers.get("Authorization") else {"X-Quicopt-Api-Key": _KEY}
+        # Mirror the service: mint only for a keyless request, 401 a key we never
+        # issued, and count mints so a test can assert one caller keeps one key.
+        if self.headers.get("Authorization"):
+            minted = {}
+            if srv.stale_key and srv.last_auth == "Bearer " + srv.stale_key:
+                self._json(401, {"reason": "invalid_key", "error": "unknown key"})
+                return
+        else:
+            srv.mints += 1
+            minted = {"X-Quicopt-Api-Key": _KEY}
         if srv.mode == "error":
             self._json(422, _ERROR, minted)
         elif self.path.startswith("/v1/solve"):
@@ -78,18 +90,28 @@ class _Stub(BaseHTTPRequestHandler):
 
 
 @contextlib.contextmanager
-def _serve(mode="ok", not_done_first=False):
+def _serve(mode="ok", not_done_first=False, stale_key=None):
+    """Run the stub and yield a client bound to it, plus the server for assertions.
+
+    The client's key cache is redirected into a fresh temp directory: the suite must
+    never read or write the real `~/.cache/quicopt/free_key`, which would both leak
+    the developer's own key to the stub and make these tests order-dependent.
+    """
     srv = HTTPServer(("127.0.0.1", 0), _Stub)
     srv.mode, srv.not_done_first, srv.gets = mode, not_done_first, 0
+    srv.stale_key, srv.mints = stale_key, 0
     srv.last_body = srv.last_auth = srv.last_encoding = srv.last_path = None
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
-    try:
-        yield Client(f"http://127.0.0.1:{srv.server_address[1]}", timeout=5.0), srv
-    finally:
-        srv.shutdown()
-        srv.server_close()
-        t.join()
+    with tempfile.TemporaryDirectory() as tmp:
+        key_path = Path(tmp) / "quicopt" / "free_key"
+        try:
+            yield Client(f"http://127.0.0.1:{srv.server_address[1]}", timeout=5.0,
+                         key_path=key_path), srv
+        finally:
+            srv.shutdown()
+            srv.server_close()
+            t.join()
 
 
 def _program():
@@ -144,8 +166,105 @@ def test_metadata_source_and_project():
 
 def test_default_base_url():
     # Omitting base_url targets the public free tier; an explicit URL still wins.
-    assert Client().base_url == DEFAULT_BASE_URL == "https://try.quicoptapi.pgi.fz-juelich.de"
-    assert Client("http://127.0.0.1:9").base_url == "http://127.0.0.1:9"
+    # cache=False keeps construction from touching the real cache file.
+    assert Client(cache=False).base_url == DEFAULT_BASE_URL == "https://try.quicoptapi.pgi.fz-juelich.de"
+    assert Client("http://127.0.0.1:9", cache=False).base_url == "http://127.0.0.1:9"
+
+
+def test_key_cached_across_clients():
+    # The regression this cache exists for: a *new client* — standing in for a new
+    # process — must replay the cached key rather than mint a second one.
+    prog = _program()
+    with _serve() as (client, srv):
+        client.solve(prog)
+        assert client.key_path.read_text() == _KEY       # minted key landed on disk
+        assert srv.mints == 1
+
+        fresh = Client(client.base_url, timeout=5.0, key_path=client.key_path)
+        assert fresh.api_key == _KEY                     # read back at construction
+        fresh.solve(prog)
+        assert srv.last_auth == "Bearer " + _KEY
+        assert srv.mints == 1                            # one caller, one key
+
+
+def test_cache_file_is_private_to_its_owner():
+    # The cache holds a credential, so it must not be group/world readable.
+    with _serve() as (client, _):
+        client.solve(_program())
+        assert oct(client.key_path.stat().st_mode & 0o777) == "0o600"
+
+
+def test_explicit_key_is_never_cached():
+    # A key the caller already holds must not overwrite the free key cached for
+    # whoever is running the code.
+    with _serve() as (client, srv):
+        held = Client(client.base_url, "e" * 64, timeout=5.0, key_path=client.key_path)
+        held.solve(_program())
+        assert srv.last_auth == "Bearer " + "e" * 64
+        assert not client.key_path.exists()
+        assert srv.mints == 0
+
+
+def test_cache_can_be_disabled():
+    with _serve() as (client, srv):
+        off = Client(client.base_url, timeout=5.0, key_path=client.key_path, cache=False)
+        off.solve(_program())
+        assert off.api_key == _KEY                       # still reused in-process
+        assert not client.key_path.exists()              # but nothing persisted
+
+
+def test_stale_cached_key_is_discarded_and_reminted_once():
+    stale = "s" * 64
+    with _serve(stale_key=stale) as (client, srv):
+        client.key_path.parent.mkdir(parents=True, exist_ok=True)
+        client.key_path.write_text(stale)                # a cache that outlived its key
+        user = Client(client.base_url, timeout=5.0, key_path=client.key_path)
+        assert user.api_key == stale
+
+        res = user.solve(_program())                     # 401 → discard → keyless → mint
+        assert res.objective == 4.0
+        assert user.api_key == _KEY
+        assert client.key_path.read_text() == _KEY       # replaced, not merely dropped
+        assert srv.mints == 1
+
+        user.solve(_program())                           # and the replacement is reused
+        assert srv.mints == 1
+
+
+def test_rejected_fresh_key_does_not_loop():
+    # A key minted *this run* that is then rejected must surface the 401, not mint
+    # again — that path is what turns one caller into many keys.
+    with _serve() as (client, srv):
+        client.solve(_program())
+        assert srv.mints == 1
+        srv.stale_key = _KEY                             # the server now rejects what it issued
+        try:
+            client.solve(_program())
+        except QuicoptError as e:
+            assert e.status_code == 401
+        else:
+            assert False, "expected the 401 to propagate"
+        assert srv.mints == 1                            # no re-mint
+
+
+def test_default_key_path_honours_env():
+    from quicopt.client import KEY_PATH_ENV, _default_key_path
+
+    saved = {k: os.environ.get(k) for k in (KEY_PATH_ENV, "XDG_CACHE_HOME")}
+    try:
+        os.environ.pop(KEY_PATH_ENV, None)
+        os.environ["XDG_CACHE_HOME"] = "/xdg"
+        assert _default_key_path() == Path("/xdg/quicopt/free_key")
+        os.environ.pop("XDG_CACHE_HOME")
+        assert _default_key_path() == Path.home() / ".cache" / "quicopt" / "free_key"
+        os.environ[KEY_PATH_ENV] = "/elsewhere/key"       # the override wins outright
+        os.environ["XDG_CACHE_HOME"] = "/xdg"
+        assert _default_key_path() == Path("/elsewhere/key")
+    finally:
+        for k, v in saved.items():
+            os.environ[k] = v if v is not None else os.environ.pop(k, "")
+            if not v:
+                os.environ.pop(k, None)
 
 
 def test_solve_gzip():

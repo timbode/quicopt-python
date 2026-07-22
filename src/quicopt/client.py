@@ -8,8 +8,10 @@ Stdlib-only (``urllib``): the transport adds no dependency, like the rest of the
 core. The request body is the versioned wire bytes; the response is the service's
 result JSON (``status`` / ``objective`` / ``solution`` / a ready-to-print
 ``display`` / …). The first keyless call mints an API key, returned in the
-``X-Quicopt-Api-Key`` response header and remembered on the :class:`Client` so
-later calls replay it as ``Authorization: Bearer``.
+``X-Quicopt-Api-Key`` response header; it is cached at
+``$XDG_CACHE_HOME/quicopt/free_key`` and replayed as ``Authorization: Bearer`` on
+every later call — including from a later *process*, so one caller keeps one key
+rather than minting a fresh one per run.
 
 Two entry points mirror the two service endpoints:
 
@@ -21,26 +23,99 @@ A non-2xx response raises :class:`QuicoptError`, carrying the service's stable
 """
 from __future__ import annotations
 
+import contextlib
 import gzip as _gzip
 import json
+import os
+import tempfile
 import time
 import urllib.error
 import urllib.request
+import warnings
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Optional, Union
 from urllib.parse import quote, urlencode
 
 from .ir import Program
 from .wire import encode
 
-__all__ = ["Client", "Job", "Result", "QuicoptError", "DEFAULT_BASE_URL"]
+__all__ = ["Client", "Job", "Result", "QuicoptError", "DEFAULT_BASE_URL", "KEY_PATH_ENV"]
 
 _OCTET = "application/octet-stream"
+
+KEY_PATH_ENV = "QUICOPT_KEY_PATH"
+"""Environment variable overriding where the free key is cached. Point it at
+durable storage in an environment whose home directory does not survive the run
+(CI, containers, Colab), where the default location is wiped between sessions and
+every run would otherwise mint a fresh key."""
 
 DEFAULT_BASE_URL = "https://try.quicoptapi.pgi.fz-juelich.de"
 """The public Quicopt free-tier endpoint a :class:`Client` targets when no
 ``base_url`` is given. Mirrors the Julia client's ``DEFAULT_BASE_URL`` so both
 clients reach the same server out of the box."""
+
+
+def _default_key_path() -> Path:
+    """The default location of the cached free key.
+
+    ``$XDG_CACHE_HOME/quicopt/free_key``, falling back to ``~/.cache`` when the
+    variable is unset, unless :data:`KEY_PATH_ENV` overrides the whole path.
+
+    Returns:
+        Path: Where the free key is read from and written to.
+    """
+    override = os.environ.get(KEY_PATH_ENV)
+    if override:
+        return Path(override).expanduser()
+    root = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
+    return Path(root).expanduser() / "quicopt" / "free_key"
+
+
+def _read_key(path: Path) -> Optional[str]:
+    """Read the cached key, or ``None`` when there is nothing usable to read.
+
+    A missing or unreadable cache is not an error — it just means this caller has
+    no key yet and the next call mints one.
+
+    Args:
+        path: The cache file.
+
+    Returns:
+        The cached key, or ``None`` if the file is absent, unreadable, or empty.
+    """
+    try:
+        return path.read_text().strip() or None
+    except OSError:
+        return None
+
+
+def _write_key(path: Path, key: str) -> None:
+    """Persist ``key`` at ``path``, atomically and readable only by its owner.
+
+    The key is a credential, so the file is ``0600``; the write goes to a temp file
+    in the same directory and is then ``os.replace``d into position, so a crash or
+    a concurrent writer can never leave a truncated key behind for the next run to
+    send.
+
+    Args:
+        path: The cache file.
+        key: The key to persist.
+
+    Raises:
+        OSError: If the directory or file cannot be written (callers treat caching
+            as best-effort and degrade to a warning).
+    """
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".free_key.")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(key)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 @dataclass(frozen=True)
@@ -189,24 +264,37 @@ def _meta_config(model: Any, project: Optional[str],
 class Client:
     """A connection to a Quicopt service at ``base_url`` — the public free tier
     (:data:`DEFAULT_BASE_URL`) unless another URL is given. Holds the API key: pass
-    a known one, or let the first keyless call mint one (then read it back from
-    ``client.api_key`` to persist)."""
+    a known one, or let the first keyless call mint one — which is then cached on
+    disk and reused by later runs, so one caller keeps one key."""
 
     def __init__(self, base_url: str = DEFAULT_BASE_URL, api_key: Optional[str] = None,
-                 *, timeout: float = 60.0):
+                 *, timeout: float = 60.0, key_path: Optional[Union[str, Path]] = None,
+                 cache: bool = True):
         """Bind a client to a service endpoint.
 
         Args:
             base_url: The service base URL; a trailing slash is stripped. Defaults
                 to :data:`DEFAULT_BASE_URL`, the public free-tier endpoint; pass
                 another URL to target a different server.
-            api_key: A known API key, or ``None`` to let the first keyless call mint
-                one (afterwards readable back from ``self.api_key``).
+            api_key: A known API key, or ``None`` to reuse the cached free key
+                (minting one on the first keyless call). A key passed here is used
+                as-is and never written to the cache — so authenticating with a
+                specific key cannot clobber the free key of the user running you.
             timeout: Per-request socket timeout, in seconds.
+            key_path: Where to cache the free key. Defaults to
+                :func:`_default_key_path`.
+            cache: Set ``False`` to keep the key in memory only, neither reading nor
+                writing the cache file.
         """
         self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
         self.timeout = timeout
+        self.key_path = Path(key_path).expanduser() if key_path is not None else _default_key_path()
+        self.cache = cache
+        self._explicit = api_key is not None
+        self.api_key = api_key if self._explicit else (_read_key(self.key_path) if cache else None)
+        # Only a key that came off disk may be discarded and re-minted on a 401 —
+        # see `_open`, which relies on this to bound re-minting to one per run.
+        self._from_cache = self.api_key is not None and not self._explicit
 
     def solve(self, model: _Model, *, project: Optional[str] = None,
               config: Optional[Dict[str, Any]] = None, gzip: bool = False) -> Result:
@@ -250,12 +338,46 @@ class Client:
         """
         body = self._request("POST", "/v1/jobs", _to_wire(model),
                              config=_meta_config(model, project, config), gzip=gzip)
+        self._remember(body.get("api_key"))     # /v1/jobs echoes a minted key in the 202 body too
         return Job(self, body["job_id"])
 
     # ── transport ───────────────────────────────────────────────────────────
 
-    def _open(self, method: str, path: str, data: Optional[bytes] = None, *,
-              config: Optional[Dict[str, Any]] = None, gzip: bool = False) -> bytes:
+    def _open(self, method: str, path: str, data: Optional[bytes] = None, **kw) -> bytes:
+        """Perform one HTTP request, retrying once if a *cached* key is rejected.
+
+        A cache file can outlive the key it holds (the server was reset, the key was
+        revoked, the file was copied from another machine), and a stale key 401s
+        every call forever. So a 401 discards the cached key and retries **once**,
+        keyless — which mints a fresh key and caches it.
+
+        The retry is deliberately narrow: only a key read from disk is discarded,
+        never one minted in this process and never a caller-supplied ``api_key``. A
+        run can therefore mint at most one key beyond the stale one, so a server
+        that rejected a key it just issued can never turn into a mint loop.
+
+        Args:
+            method: The HTTP method.
+            path: The path under ``base_url`` (e.g. ``/v1/solve``).
+            data: The request body, or ``None`` for a bodyless request.
+            **kw: Forwarded to :meth:`_attempt` (``config``, ``gzip``).
+
+        Returns:
+            bytes: The raw response body.
+
+        Raises:
+            QuicoptError: On a non-2xx response.
+        """
+        try:
+            return self._attempt(method, path, data, **kw)
+        except QuicoptError as e:
+            if e.status_code != 401 or not self._from_cache:
+                raise
+            self._discard_key()
+            return self._attempt(method, path, data, **kw)
+
+    def _attempt(self, method: str, path: str, data: Optional[bytes] = None, *,
+                 config: Optional[Dict[str, Any]] = None, gzip: bool = False) -> bytes:
         """Perform one HTTP request and return the raw response body.
 
         Sets the octet-stream content type (and gzip encoding, if requested) for a
@@ -316,8 +438,7 @@ class Client:
         """Remember a freshly minted API key from a response, if we have none yet.
 
         The first keyless call mints a key, returned in the ``X-Quicopt-Api-Key``
-        response header; storing it lets the next call authenticate as the same
-        caller. A key we already hold is never overwritten.
+        response header. A key we already hold is never overwritten.
 
         Args:
             headers: The response headers.
@@ -325,9 +446,44 @@ class Client:
         Returns:
             None. ``self.api_key`` is set on first mint.
         """
-        minted = headers.get("X-Quicopt-Api-Key")
-        if minted and not self.api_key:
-            self.api_key = minted
+        self._remember(headers.get("X-Quicopt-Api-Key"))
+
+    def _remember(self, minted: Optional[str]) -> None:
+        """Adopt ``minted`` as this client's key and cache it for the next run.
+
+        Persisting is best-effort: an unwritable cache (read-only home, a container
+        without ``$HOME``) warns rather than raises, since the solve itself
+        succeeded and failing it over a cache miss would be worse than re-minting.
+
+        Args:
+            minted: The key the server returned, or ``None``/empty if it minted none.
+
+        Returns:
+            None.
+        """
+        if not minted or self.api_key:
+            return
+        self.api_key = minted
+        if self._explicit or not self.cache:
+            return
+        try:
+            _write_key(self.key_path, minted)
+        except OSError as e:
+            warnings.warn(f"could not cache the Quicopt free key at {self.key_path} "
+                          f"({e}); every run will mint a new key — set "
+                          f"${KEY_PATH_ENV} to a writable location", stacklevel=2)
+
+    def _discard_key(self) -> None:
+        """Drop the cached key the server just rejected, in memory and on disk.
+
+        Returns:
+            None. The next request goes out keyless and mints a replacement.
+        """
+        self.api_key = None
+        self._from_cache = False
+        if self.cache:
+            with contextlib.suppress(OSError):      # an unremovable cache still gets re-minted past
+                self.key_path.unlink(missing_ok=True)
 
 
 def _decode(raw: bytes) -> Dict[str, Any]:
