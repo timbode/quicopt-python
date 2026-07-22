@@ -28,7 +28,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from .ir import Program
 from .wire import encode
@@ -142,13 +142,48 @@ def _to_wire(model: _Model) -> bytes:
 def _query(config: Optional[Dict[str, Any]]) -> str:
     """Render a config mapping as a URL query-string suffix.
 
+    Encodes spaces as ``%20`` (``quote``, not the default ``+``) so a value round-
+    trips unambiguously through the service's query parser, matching the Julia
+    client.
+
     Args:
         config: Optional service parameters.
 
     Returns:
         str: ``"?k=v&…"`` if ``config`` is non-empty, else ``""``.
     """
-    return "?" + urlencode(config) if config else ""
+    return "?" + urlencode(config, quote_via=quote) if config else ""
+
+
+def _source_language(model: Any) -> Optional[str]:
+    """The modelling front-end that authored ``model`` (for the ``source_language``
+    tag), or ``None`` for a hand-built ``Program`` / pre-encoded wire bytes, which
+    have no front-end to attribute. Mirrors the dispatch in ``_import_frontend``."""
+    if isinstance(model, (bytes, bytearray, Program)):
+        return None
+    mod = type(model).__module__ or ""
+    if mod.startswith("ortools") or hasattr(model, "export_model"):
+        return "mathopt"
+    if mod.startswith("pyomo"):
+        return "pyomo"
+    if mod.startswith("pulp"):
+        return "pulp"
+    return None
+
+
+def _meta_config(model: Any, project: Optional[str],
+                 config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Merge the per-call metadata tags into the request config (sent as query
+    params): the auto-detected ``source_language`` (unless the caller already set
+    one in ``config``) and the optional ``project_id``. The model is unchanged —
+    these ride the query string, not the wire bytes."""
+    meta: Dict[str, Any] = dict(config or {})
+    src = _source_language(model)
+    if src is not None:
+        meta.setdefault("source_language", src)
+    if project is not None:
+        meta["project_id"] = project
+    return meta
 
 
 class Client:
@@ -173,14 +208,16 @@ class Client:
         self.api_key = api_key
         self.timeout = timeout
 
-    def solve(self, model: _Model, *, config: Optional[Dict[str, Any]] = None,
-              gzip: bool = False) -> Result:
+    def solve(self, model: _Model, *, project: Optional[str] = None,
+              config: Optional[Dict[str, Any]] = None, gzip: bool = False) -> Result:
         """Solve ``model`` synchronously, blocking until the result returns.
 
         Args:
             model: A front-end model (Pyomo, OR-Tools MathOpt) — imported to the
                 wire IR here — or a ``Program`` / pre-encoded wire bytes if you built
                 them yourself.
+            project: Optional project tag for the call, so calls on one key can be
+                invoiced per project. Sent as a query param, not baked into the model.
             config: Optional service parameters, sent as the query string.
             gzip: If ``True``, gzip-compress the request body.
 
@@ -191,14 +228,17 @@ class Client:
             QuicoptError: On a non-2xx response.
         """
         return Result._from_json(
-            self._request("POST", "/v1/solve", _to_wire(model), config=config, gzip=gzip))
+            self._request("POST", "/v1/solve", _to_wire(model),
+                          config=_meta_config(model, project, config), gzip=gzip))
 
-    def submit(self, model: _Model, *, config: Optional[Dict[str, Any]] = None,
-               gzip: bool = False) -> "Job":
+    def submit(self, model: _Model, *, project: Optional[str] = None,
+               config: Optional[Dict[str, Any]] = None, gzip: bool = False) -> "Job":
         """Submit ``model`` for asynchronous solving and return a handle to poll.
 
         Args:
             model: A Pyomo/MathOpt model, a ``Program``, or pre-encoded wire bytes.
+            project: Optional project tag for the call (per-project invoicing), sent
+                as a query param, not baked into the model.
             config: Optional service parameters, sent as the query string.
             gzip: If ``True``, gzip-compress the request body.
 
@@ -208,7 +248,8 @@ class Client:
         Raises:
             QuicoptError: On a non-2xx response.
         """
-        body = self._request("POST", "/v1/jobs", _to_wire(model), config=config, gzip=gzip)
+        body = self._request("POST", "/v1/jobs", _to_wire(model),
+                             config=_meta_config(model, project, config), gzip=gzip)
         return Job(self, body["job_id"])
 
     # ── transport ───────────────────────────────────────────────────────────

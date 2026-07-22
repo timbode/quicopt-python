@@ -37,7 +37,8 @@ print(result.display)                         # the service's ready-to-print sum
 [`solve`][quicopt.client.Client.solve] takes the model directly (Pyomo, OR-Tools
 MathOpt, or PuLP) and imports it to the wire IR internally. For a long solve,
 [`submit`][quicopt.client.Client.submit] returns a [`Job`][quicopt.client.Job] handle
-to poll.
+to poll. Pass `project="…"` to tag a call for per-project invoicing; the modelling
+front-end is recorded automatically.
 
 If you need the wire bytes yourself — to inspect them or send them by another route —
 build a [`Program`][quicopt.ir.Program] (directly or via a front-end

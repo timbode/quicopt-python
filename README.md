@@ -43,6 +43,10 @@ reuse it on later calls (`Client(api_key=…)`). Point `Client(base_url=…)` at
 server to override the default. For a long solve, `client.submit(m)` returns a job
 handle to poll — `job.result()`.
 
+Tag a call with `client.solve(m, project="my-project")` to attribute it to a
+project — handy when one key serves several projects. The modelling front-end
+(Pyomo/MathOpt/PuLP) is recorded automatically.
+
 If you need the wire bytes yourself (to inspect or send by another route), the
 front-end importers and encoder are still public:
 
