@@ -44,10 +44,18 @@ print(result.display)                         # the service's ready-to-print sum
 ```
 
 `solve` takes the model directly (Pyomo, OR-Tools MathOpt, or PuLP) and imports it
-to the wire IR internally. The first keyless call mints an API key (`client.api_key`);
-reuse it on later calls (`Client(api_key=…)`). Point `Client(base_url=…)` at another
-server to override the default. For a long solve, `client.submit(m)` returns a job
-handle to poll — `job.result()`.
+to the wire IR internally. The first keyless call mints an API key, cached at
+`$XDG_CACHE_HOME/quicopt/free_key` (`~/.cache/…` by default) and replayed on every
+later call — including from later runs, so you keep one key without doing anything.
+Pass `Client(api_key=…)` to authenticate with a key you already hold (used as-is,
+never cached), or `Client(cache=False)` to keep the key in memory only. Point
+`Client(base_url=…)` at another server to override the default. For a long solve,
+`client.submit(m)` returns a job handle to poll — `job.result()`.
+
+Where the home directory does not survive the run (CI, containers, Colab), the
+cache is wiped between sessions and each run mints a new key. Set
+`QUICOPT_KEY_PATH` to a durable location — or `Client(key_path=…)` — to keep one
+key across sessions.
 
 Tag a call with `client.solve(m, project="my-project")` to attribute it to a
 project — handy when one key serves several projects. The modelling front-end
