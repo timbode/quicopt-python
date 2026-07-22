@@ -1,3 +1,7 @@
+# Local maintainer context (closed-architecture notes), not part of the public package.
+/CLAUDE.md
+/.claude/
+
 __pycache__/
 *.py[cod]
 .venv/
